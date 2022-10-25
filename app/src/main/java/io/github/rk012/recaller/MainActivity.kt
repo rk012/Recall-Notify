@@ -10,7 +10,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             RecallerTheme {
-                // A surface container using the 'background' color from the theme
                 App()
             }
         }
