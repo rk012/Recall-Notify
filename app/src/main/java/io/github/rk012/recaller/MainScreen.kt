@@ -1,6 +1,7 @@
 package io.github.rk012.recaller
 
 import android.Manifest
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Create
@@ -11,6 +12,7 @@ import androidx.compose.runtime.*
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.PermissionStatus
 import com.google.accompanist.permissions.rememberPermissionState
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -20,7 +22,11 @@ fun MainScreen(
     var isConsumerState by remember { mutableStateOf(true) }
     var startCamera by remember { mutableStateOf(false) }
 
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(
@@ -74,7 +80,16 @@ fun MainScreen(
         MainScreenContent(
             startCamera,
             onCameraStart,
-            onCameraFail = { startCamera = false }
+            onCameraFail = { showSnackbar ->
+                if (showSnackbar) scope.launch {
+                    if (snackbarHostState.currentSnackbarData == null) snackbarHostState.showSnackbar(
+                        message = "Camera permission required for this feature",
+                        withDismissAction = true
+                    )
+                }
+                startCamera = false
+            },
+            padding = it
         )
     }
 }
@@ -84,9 +99,13 @@ fun MainScreen(
 private fun MainScreenContent(
     startCamera: Boolean,
     onCameraStart: () -> Unit,
-    onCameraFail: () -> Unit
+    onCameraFail: (Boolean) -> Unit,
+    padding: PaddingValues
 ) {
-    val cameraPermissionState = rememberPermissionState(permission = Manifest.permission.CAMERA)
+    var showCameraDialog by remember { mutableStateOf(true) }
+    val cameraPermissionState = rememberPermissionState(permission = Manifest.permission.CAMERA) {
+        showCameraDialog = it
+    }
 
     // TODO
 
@@ -96,9 +115,9 @@ private fun MainScreenContent(
             if (startCamera) onCameraStart()
         }
         is PermissionStatus.Denied -> {
-            if (startCamera) {
+            if (showCameraDialog && startCamera) {
                 AlertDialog(
-                    onDismissRequest = onCameraFail,
+                    onDismissRequest = { onCameraFail(false) },
                     icon = {
                         Icon(imageVector = Icons.Rounded.CameraAlt, contentDescription = null)
                     },
@@ -114,11 +133,13 @@ private fun MainScreenContent(
                         }
                     },
                     dismissButton = {
-                        TextButton(onClick = onCameraFail) {
+                        TextButton(onClick = { onCameraFail(false) }) {
                             Text("Cancel")
                         }
                     }
                 )
+            } else if (startCamera) {
+                onCameraFail(true)
             }
         }
     }
