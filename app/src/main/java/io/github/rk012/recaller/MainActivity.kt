@@ -11,16 +11,21 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             RecallerTheme {
-                var screenState by remember { mutableStateOf(ScreenState.MAIN) }
+                var screenData by remember { mutableStateOf(ScreenData(ScreenState.MAIN, null)) }
 
                 App(
-                    screenState = screenState,
-                    setScreenState = { screenState = it }
+                    screenData = screenData,
+                    setScreenData = { screenData = it }
                 )
             }
         }
     }
 }
+
+data class ScreenData(
+    val screenState: ScreenState,
+    val lastCameraScan: String?
+)
 
 enum class ScreenState {
     MAIN,
@@ -30,19 +35,27 @@ enum class ScreenState {
 
 @Composable
 fun App(
-    screenState: ScreenState,
-    setScreenState: (ScreenState) -> Unit
+    screenData: ScreenData,
+    setScreenData: (ScreenData) -> Unit
 ) {
-    when (screenState) {
+    when (screenData.screenState) {
         ScreenState.MAIN -> MainScreen(
             onCameraStart = {
-                setScreenState(ScreenState.SCAN)
+                setScreenData(
+                    ScreenData(screenState = ScreenState.SCAN, lastCameraScan = null)
+                )
+            },
+            cameraData = screenData.lastCameraScan
+        )
+
+        ScreenState.SCAN -> ScannerScreen(
+            onCodeScanned = {
+                setScreenData(
+                    ScreenData(screenState = ScreenState.MAIN, lastCameraScan = it)
+                )
             }
         )
 
-        ScreenState.SCAN -> {
-            ScannerScreen()
-        }
         ScreenState.INPUT -> {}
     }
 }

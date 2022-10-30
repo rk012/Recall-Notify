@@ -14,7 +14,9 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import java.util.concurrent.Executors
 
 @Composable
-fun ScannerScreen() {
+fun ScannerScreen(
+    onCodeScanned: (String) -> Unit
+) {
     Box(modifier = Modifier.fillMaxSize()) {
         val context = LocalContext.current
         val lifecycleOwner = LocalLifecycleOwner.current
@@ -32,8 +34,8 @@ fun ScannerScreen() {
             val cameraExecutor = Executors.newSingleThreadExecutor()
 
             val qrAnalyzer = QrCodeAnalyzer {
-                // TODO
                 Log.i("ScannerScreen", "Qr Code found: ${it.rawValue}")
+                onCodeScanned(it.rawValue!!)
             }
 
             val imageAnalysis = ImageAnalysis.Builder()
