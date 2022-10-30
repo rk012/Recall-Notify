@@ -3,17 +3,20 @@ package io.github.rk012.recaller
 import android.content.Context
 import android.util.Log
 import android.view.ViewGroup
-import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
+import androidx.camera.core.UseCase
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import kotlinx.coroutines.launch
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.common.InputImage
 import java.util.concurrent.Executor
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
@@ -33,11 +36,9 @@ suspend fun Context.getCameraProvider(): ProcessCameraProvider = suspendCoroutin
 
 @Composable
 fun CameraPreview(
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onUseCase: (UseCase) -> Unit
 ) {
-    val coroutineScope = rememberCoroutineScope()
-    val lifecycleOwner = LocalLifecycleOwner.current
-
     AndroidView(
         modifier = modifier,
         factory = { context ->
@@ -49,25 +50,52 @@ fun CameraPreview(
                 )
             }
 
-            val previewUseCase = Preview.Builder().build().also {
+            Preview.Builder().build().also {
                 it.setSurfaceProvider(previewView.surfaceProvider)
-            }
-
-            coroutineScope.launch {
-                val cameraProvider = context.getCameraProvider()
-                try {
-                    cameraProvider.unbindAll()
-                    cameraProvider.bindToLifecycle(
-                        lifecycleOwner,
-                        CameraSelector.DEFAULT_BACK_CAMERA,
-                        previewUseCase
-                    )
-                } catch (e: Exception) {
-                    Log.e("CameraPreview", "Use case binding failed", e)
-                }
-            }
+            }.let(onUseCase)
 
             previewView
         }
     )
+}
+
+class QrCodeAnalyzer(
+    private val onCodeFound: (Barcode) -> Unit
+) : ImageAnalysis.Analyzer {
+    private var lastTimeStamp = 0L
+
+    @androidx.camera.core.ExperimentalGetImage
+    override fun analyze(image: ImageProxy) {
+        val currentTimeStamp = System.currentTimeMillis()
+
+        if (currentTimeStamp - lastTimeStamp >= 1) {
+            image.image?.let { inputImage ->
+                val options = BarcodeScannerOptions.Builder()
+                    .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                    .build()
+
+                val scanner = BarcodeScanning.getClient(options)
+                val processImage = InputImage.fromMediaImage(inputImage, image.imageInfo.rotationDegrees)
+
+                scanner.process(processImage)
+                    .addOnSuccessListener { qrCodes ->
+                        if (qrCodes.isNotEmpty()) {
+                            onCodeFound(qrCodes[0])
+                        } else {
+                            Log.d("QrCodeAnalyzer", "No QR Code scanned")
+                        }
+                    }
+                    .addOnFailureListener {
+                        Log.w("QrCodeAnalyzer", "QrCodeAnalyzer: Something went wrong $it")
+                    }
+                    .addOnCompleteListener {
+                        image.close()
+                    }
+            }
+
+            lastTimeStamp = currentTimeStamp
+        } else {
+            image.close()
+        }
+    }
 }
