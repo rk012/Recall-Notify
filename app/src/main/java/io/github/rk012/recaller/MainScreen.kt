@@ -155,3 +155,8 @@ private fun ConsumerContent(
         }
     }
 }
+
+@Composable
+private fun SellerContent() {
+
+}
