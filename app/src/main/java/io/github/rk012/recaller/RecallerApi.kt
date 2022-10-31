@@ -12,7 +12,7 @@ import kotlinx.serialization.json.Json
 
 val client = HttpClient()
 
-const val API_URL = ""
+const val API_URL = "3c6d-108-16-235-152.ngrok.io"
 
 @Serializable
 data class Product(
@@ -36,7 +36,7 @@ data class ProductIdResponse(
 suspend fun getRecalls(ids: List<Long>): Map<Long, LocalDate> {
     val response = client.get {
         url {
-            protocol = URLProtocol.HTTP
+            protocol = URLProtocol.HTTPS
             host = API_URL
             path("recalls")
             parameters["ids"] = Json.encodeToString(ids)
@@ -48,7 +48,7 @@ suspend fun getRecalls(ids: List<Long>): Map<Long, LocalDate> {
 
 suspend fun getRecallId() = client.get {
     url {
-        protocol = URLProtocol.HTTP
+        protocol = URLProtocol.HTTPS
         host = API_URL
         path("recall-auth")
     }
@@ -57,7 +57,7 @@ suspend fun getRecallId() = client.get {
 suspend fun issueRecall(token: String) {
     client.post {
         url {
-            protocol = URLProtocol.HTTP
+            protocol = URLProtocol.HTTPS
             host = API_URL
             path("recalls")
         }

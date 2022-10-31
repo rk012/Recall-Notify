@@ -1,6 +1,7 @@
 package io.github.rk012.recaller
 
 import android.Manifest
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -11,17 +12,19 @@ import androidx.compose.material.icons.rounded.Sell
 import androidx.compose.material.icons.rounded.ShoppingBag
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.Saver
-import androidx.compose.runtime.saveable.SaverScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.Popup
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.PermissionStatus
 import com.google.accompanist.permissions.rememberPermissionState
 import kotlinx.coroutines.launch
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import net.glxn.qrgen.android.QRCode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,6 +36,8 @@ fun MainScreen(
 
     var startCamera by remember { mutableStateOf(false) }
     var showInputForm by remember { mutableStateOf(false) }
+
+    var qrCodeData: String? by remember { mutableStateOf(null) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -88,7 +93,7 @@ fun MainScreen(
             }
         },
         floatingActionButtonPosition = FabPosition.End
-    ) {
+    ) { padding ->
         if (isConsumerState) {
             ConsumerContent(
                 startCamera,
@@ -103,22 +108,23 @@ fun MainScreen(
                     startCamera = false
                 },
                 cameraData = cameraData,
-                padding = it
+                padding = padding
             )
         } else {
-            SellerContent(padding = it)
+            SellerContent(
+                showInputForm = showInputForm,
+                resetInputForm = { showInputForm = false },
+                qrCodeData = qrCodeData,
+                setQrCodeData = { qrCodeData = it },
+                padding = padding
+            )
         }
     }
 }
 
-object ProductSaver : Saver<List<Product>, String> {
-    override fun restore(value: String): List<Product>? = Json.decodeFromString(value)
-    override fun SaverScope.save(value: List<Product>): String = Json.encodeToString(value)
-}
-
-object SellerProductSaver : Saver<List<SellerProduct>, String> {
-    override fun restore(value: String): List<SellerProduct>? = Json.decodeFromString(value)
-    override fun SaverScope.save(value: List<SellerProduct>): String = Json.encodeToString(value)
+class AppViewModel : ViewModel() {
+    val userProducts = mutableStateListOf<Product>()
+    val sellerProducts = mutableStateListOf<SellerProduct>()
 }
 
 @OptIn(ExperimentalPermissionsApi::class)
@@ -177,24 +183,71 @@ private fun ConsumerContent(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SellerContent(
-    padding: PaddingValues
+    showInputForm: Boolean,
+    resetInputForm: () -> Unit,
+    qrCodeData: String?,
+    setQrCodeData: (String?) -> Unit,
+    padding: PaddingValues,
+    viewModel: AppViewModel = viewModel()
 ) {
-    var sellerProducts = rememberSaveable(saver = SellerProductSaver) {
-        emptyList()
-    }
-
     val scope = rememberCoroutineScope()
     
     LazyColumn {
-        items(sellerProducts) { sellerProduct ->
+        items(viewModel.sellerProducts) { sellerProduct ->
             ProductCard(product = sellerProduct.product, padding = padding) {
                 scope.launch {
                     issueRecall(sellerProduct.token)
-                    sellerProducts = sellerProducts.dropWhile { it == sellerProduct }
+                    viewModel.sellerProducts.remove(sellerProduct)
                 }
             }
+        }
+    }
+
+    if (showInputForm) Dialog(onDismissRequest = resetInputForm) {
+        var name by remember { mutableStateOf("") }
+        var seller by remember { mutableStateOf("") }
+        var enableButton by remember { mutableStateOf(true) }
+
+        Column {
+            TextField(value = name, onValueChange = { name = it }, placeholder = { Text(text = "Name") })
+            TextField(value = seller, onValueChange = { seller = it }, placeholder = { Text(text = "Seller") })
+            Button(onClick = {
+                scope.launch {
+                    enableButton = false
+                    val productInfo = getRecallId()
+                    val product = SellerProduct(
+                        product = Product(
+                            name = name,
+                            seller = seller,
+                            id = productInfo.id.toLong()
+                        ),
+                        token = productInfo.token
+                    )
+
+                    viewModel.sellerProducts.add(product)
+                    setQrCodeData(Json.encodeToString(product.product))
+                    resetInputForm()
+                }
+            }, enabled = enableButton) {
+                Text(text = "Submit")
+            }
+        }
+    }
+
+    qrCodeData?.let {
+        Dialog(
+            onDismissRequest = {
+                setQrCodeData(null)
+            }
+        ) {
+            Image(
+                bitmap = QRCode.from(qrCodeData).bitmap().asImageBitmap(),
+                contentDescription = "QR Code",
+                modifier = Modifier.fillMaxSize(0.9f)
+            )
         }
     }
 }
