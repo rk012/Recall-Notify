@@ -1,8 +1,9 @@
 package io.github.rk012.recaller
 
 import android.Manifest
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Create
@@ -10,11 +11,17 @@ import androidx.compose.material.icons.rounded.Sell
 import androidx.compose.material.icons.rounded.ShoppingBag
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.SaverScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.PermissionStatus
 import com.google.accompanist.permissions.rememberPermissionState
 import kotlinx.coroutines.launch
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -23,7 +30,9 @@ fun MainScreen(
     cameraData: String?
 ) {
     var isConsumerState by remember { mutableStateOf(true) }
+
     var startCamera by remember { mutableStateOf(false) }
+    var showInputForm by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -70,7 +79,7 @@ fun MainScreen(
                     )
                 }
             } else {
-                FloatingActionButton(onClick = { /*TODO*/ }) {
+                FloatingActionButton(onClick = { showInputForm = true }) {
                     Icon(
                         imageVector = Icons.Rounded.Create,
                         contentDescription = "Create item"
@@ -96,8 +105,20 @@ fun MainScreen(
                 cameraData = cameraData,
                 padding = it
             )
+        } else {
+            SellerContent(padding = it)
         }
     }
+}
+
+object ProductSaver : Saver<List<Product>, String> {
+    override fun restore(value: String): List<Product>? = Json.decodeFromString(value)
+    override fun SaverScope.save(value: List<Product>): String = Json.encodeToString(value)
+}
+
+object SellerProductSaver : Saver<List<SellerProduct>, String> {
+    override fun restore(value: String): List<SellerProduct>? = Json.decodeFromString(value)
+    override fun SaverScope.save(value: List<SellerProduct>): String = Json.encodeToString(value)
 }
 
 @OptIn(ExperimentalPermissionsApi::class)
@@ -157,6 +178,39 @@ private fun ConsumerContent(
 }
 
 @Composable
-private fun SellerContent() {
+private fun SellerContent(
+    padding: PaddingValues
+) {
+    var sellerProducts = rememberSaveable(saver = SellerProductSaver) {
+        emptyList()
+    }
 
+    val scope = rememberCoroutineScope()
+    
+    LazyColumn {
+        items(sellerProducts) { sellerProduct ->
+            ProductCard(product = sellerProduct.product, padding = padding) {
+                scope.launch {
+                    issueRecall(sellerProduct.token)
+                    sellerProducts = sellerProducts.dropWhile { it == sellerProduct }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProductCard(product: Product, padding: PaddingValues, onRecallIssue: () -> Unit) = Card(
+    modifier = Modifier.padding(padding)
+) {
+    Row {
+        Column(modifier = Modifier) {
+            Text(product.name)
+            Text(product.seller)
+        }
+        Spacer(modifier = Modifier.weight(1f))
+        Button(onClick = onRecallIssue) {
+            Text("Issue recall")
+        }
+    }
 }
